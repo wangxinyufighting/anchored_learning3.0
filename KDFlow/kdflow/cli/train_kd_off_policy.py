@@ -17,18 +17,34 @@ from kdflow.utils.distributed_sampler import DistributedSampler
 from kdflow.utils.utils import get_tokenizer
 
 
+def init_ray_for_kdflow():
+    """Start an isolated local Ray session by default.
+
+    On shared servers, RAY_ADDRESS may point to another user's stale or
+    unreachable cluster. Use KDFLOW_RAY_ADDRESS=auto or an explicit head address
+    when you intentionally want to attach to an existing Ray cluster.
+    """
+    ray_address = os.environ.get("KDFLOW_RAY_ADDRESS", "local")
+    ray_kwargs = {
+        "address": ray_address,
+        "runtime_env": {
+            "env_vars": {
+                "TOKENIZERS_PARALLELISM": "true",
+                "NCCL_DEBUG": "WARN"
+            },
+            "working_dir": os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        }
+    }
+    ray_temp_dir = os.environ.get("KDFLOW_RAY_TEMP_DIR")
+    if ray_temp_dir:
+        ray_kwargs["_temp_dir"] = ray_temp_dir
+    ray.init(**ray_kwargs)
+
+
 def train(args):
     # Initialize Ray if not already initialized
     if not ray.is_initialized():
-        ray.init(
-            runtime_env={
-                "env_vars": {
-                    "TOKENIZERS_PARALLELISM": "true",
-                    "NCCL_DEBUG": "WARN"
-                },
-                "working_dir": os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            }
-        )
+        init_ray_for_kdflow()
     
     strategy = get_strategy(args)
     strategy.print(args)
