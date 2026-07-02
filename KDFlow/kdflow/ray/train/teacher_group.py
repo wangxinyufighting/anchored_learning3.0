@@ -8,6 +8,7 @@ from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from kdflow.ray.train.teacher_actor import TeacherRayActor
+from kdflow.ray.utils import get_runtime_env_vars
 from kdflow.utils.logging_utils import init_logger
 
 logger = init_logger(__name__)
@@ -93,9 +94,10 @@ class TeacherActorGroup:
     
     def _create_actors(self, num_gpus_per_actor: float):
         """Create Ray remote TeacherRayActor instances with proper GPU binding via PG."""
-        env_vars = {
+        env_vars = get_runtime_env_vars()
+        env_vars.update({
             name: "1" for name in NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
-        }
+        })
         
         num_gpu_per_engine = self.tp_size * self.pp_size
         nnodes_per_engine = max(num_gpu_per_engine // self.num_gpus_per_node, 1)

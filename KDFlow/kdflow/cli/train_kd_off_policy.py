@@ -15,6 +15,7 @@ from kdflow.backend import get_strategy
 from kdflow.arguments import init_args
 from kdflow.utils.distributed_sampler import DistributedSampler
 from kdflow.utils.utils import get_tokenizer
+from kdflow.ray.utils import get_runtime_env_vars
 
 
 def init_ray_for_kdflow():
@@ -28,10 +29,10 @@ def init_ray_for_kdflow():
     ray_kwargs = {
         "address": ray_address,
         "runtime_env": {
-            "env_vars": {
+            "env_vars": get_runtime_env_vars({
                 "TOKENIZERS_PARALLELISM": "true",
                 "NCCL_DEBUG": "WARN"
-            },
+            }),
             "working_dir": os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         }
     }

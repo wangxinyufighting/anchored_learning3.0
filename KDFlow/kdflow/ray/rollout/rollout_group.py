@@ -14,6 +14,7 @@ from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from kdflow.ray.rollout.rollout_actor import RolloutRayActor
+from kdflow.ray.utils import get_runtime_env_vars
 from kdflow.utils.logging_utils import init_logger
 
 logger = init_logger(__name__)
@@ -110,9 +111,10 @@ class RolloutActorGroup:
 
     def _create_actors(self, num_gpus_per_actor: float):
         """Create Ray remote RolloutRayActor instances with proper GPU binding."""
-        env_vars = {
+        env_vars = get_runtime_env_vars()
+        env_vars.update({
             name: "1" for name in NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
-        }
+        })
         env_vars.update(SGLANG_ENV_VARS)
 
         num_gpu_per_engine = min(self.num_gpus_per_actor_engine, self.num_gpus_per_node)

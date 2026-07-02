@@ -1,6 +1,41 @@
 import os
 
 
+RUNTIME_ENV_INHERIT_VARS = [
+    "LD_LIBRARY_PATH",
+    "LIBRARY_PATH",
+    "PATH",
+    "CUDA_HOME",
+    "CUDA_PATH",
+    "CONDA_PREFIX",
+    "VIRTUAL_ENV",
+    "PYTHONPATH",
+    "HF_HOME",
+    "HF_HUB_CACHE",
+    "TRANSFORMERS_CACHE",
+    "TORCH_EXTENSIONS_DIR",
+    "TRITON_CACHE_DIR",
+    "CUDA_MODULE_LOADING",
+]
+
+
+def get_runtime_env_vars(extra=None):
+    """Return environment variables that Ray workers should inherit.
+
+    Ray runtime_env overlays environment variables for actors and workers. CUDA
+    library paths are especially important because SGLang starts scheduler
+    subprocesses inside Ray actors.
+    """
+    env_vars = {
+        name: os.environ[name]
+        for name in RUNTIME_ENV_INHERIT_VARS
+        if os.environ.get(name)
+    }
+    if extra:
+        env_vars.update(extra)
+    return env_vars
+
+
 # Address https://github.com/ray-project/ray/issues/51117
 # This function is used to get the bundle indices of a placement group
 # and ensure that the bundles placed on the same node are grouped together.
