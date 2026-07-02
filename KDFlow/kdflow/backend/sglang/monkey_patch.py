@@ -29,6 +29,19 @@ logger = init_logger(__name__)
 _PATCH_APPLIED = False
 
 
+def _get_req_is_chunked(req) -> int:
+    return getattr(req, "is_chunked", 0)
+
+
+def _decrement_req_is_chunked(req) -> None:
+    if hasattr(req, "is_chunked"):
+        req.is_chunked -= 1
+
+
+def _safe_getattr(obj, name, default=None):
+    return getattr(obj, name, default)
+
+
 def process_batch_result_prefill_patched(
     self: "Scheduler",
     batch: "ScheduleBatch",
@@ -80,11 +93,11 @@ def process_batch_result_prefill_patched(
         logprob_pt = 0
 
         for i, (req, next_token_id) in enumerate(zip(batch.reqs, next_token_ids)):
-            if req.finished() or req.is_retracted:
+            if req.finished() or _safe_getattr(req, "is_retracted", False):
                 # decode req in mixed batch or retracted req
                 continue
 
-            if req.is_chunked <= 0:
+            if _get_req_is_chunked(req) <= 0:
                 if hasattr(req.time_stats, "prefill_finished_ts"):
                     if req.time_stats.prefill_finished_ts == 0.0:
                         req.time_stats.prefill_finished_ts = time.time()
@@ -99,7 +112,7 @@ def process_batch_result_prefill_patched(
                     self.maybe_collect_routed_experts(req)
                     release_kv_cache(req, self.tree_cache)
                     req.time_stats.completion_time = time.perf_counter()
-                elif not batch.decoding_reqs or req not in batch.decoding_reqs:
+                elif not _safe_getattr(batch, "decoding_reqs", None) or req not in batch.decoding_reqs:
                     # This updates radix so others can match
                     self.tree_cache.cache_unfinished_req(req)
 
@@ -143,7 +156,7 @@ def process_batch_result_prefill_patched(
                         .numpy()
                     )
 
-                if req.grammar is not None:
+                if _safe_getattr(req, "grammar", None) is not None:
                     # FIXME: this try-except block is for handling unexpected xgrammar issue.
                     try:
                         req.grammar.accept_token(next_token_id)
@@ -165,7 +178,7 @@ def process_batch_result_prefill_patched(
 
             else:
                 # being chunked reqs' prefill is not finished
-                req.is_chunked -= 1
+                _decrement_req_is_chunked(req)
                 # There is only at most one request being currently chunked.
                 # Because this request does not finish prefill,
                 # we don't want to stream the request currently being chunked.
@@ -222,11 +235,11 @@ def process_batch_result_prefill_patched(
 
         # Check finish conditions
         for i, req in enumerate(batch.reqs):
-            if req.is_retracted:
+            if _safe_getattr(req, "is_retracted", False):
                 continue
 
             req.embedding = embeddings[i]
-            if req.is_chunked <= 0:
+            if _get_req_is_chunked(req) <= 0:
                 # Dummy output token for embedding models
                 req.output_ids.append(0)
                 req.check_finished()
@@ -237,7 +250,7 @@ def process_batch_result_prefill_patched(
                     self.tree_cache.cache_unfinished_req(req)
             else:
                 # being chunked reqs' prefill is not finished
-                req.is_chunked -= 1
+                _decrement_req_is_chunked(req)
 
             # trace_slice(
             #     RequestStage.PREFILL_FORWARD,
