@@ -36,6 +36,35 @@ def get_runtime_env_vars(extra=None):
     return env_vars
 
 
+def normalize_gpu_id_for_visible_devices(gpu_id, env_vars=os.environ):
+    """Map a Ray physical GPU id to the process-local CUDA ordinal.
+
+    When users launch on shared machines with CUDA_VISIBLE_DEVICES=2,3, Ray may
+    report physical ids such as 2 and 3. Inside that process, CUDA sees them as
+    ordinal 0 and 1, so SGLang must receive the local ordinal.
+    """
+    gpu_id_str = str(gpu_id)
+    if gpu_id_str.endswith(".0"):
+        gpu_id_str = gpu_id_str[:-2]
+
+    visible_devices = env_vars.get("CUDA_VISIBLE_DEVICES")
+    if not visible_devices:
+        return int(float(gpu_id))
+
+    visible = [item.strip() for item in visible_devices.split(",") if item.strip()]
+    if gpu_id_str in visible:
+        return visible.index(gpu_id_str)
+
+    try:
+        gpu_id_int = int(float(gpu_id))
+    except (TypeError, ValueError):
+        return gpu_id
+
+    if 0 <= gpu_id_int < len(visible):
+        return gpu_id_int
+    return gpu_id_int
+
+
 # Address https://github.com/ray-project/ray/issues/51117
 # This function is used to get the bundle indices of a placement group
 # and ensure that the bundles placed on the same node are grouped together.

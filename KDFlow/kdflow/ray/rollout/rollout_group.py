@@ -14,7 +14,7 @@ from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from kdflow.ray.rollout.rollout_actor import RolloutRayActor
-from kdflow.ray.utils import get_runtime_env_vars
+from kdflow.ray.utils import get_runtime_env_vars, normalize_gpu_id_for_visible_devices
 from kdflow.utils.logging_utils import init_logger
 
 logger = init_logger(__name__)
@@ -121,7 +121,7 @@ class RolloutActorGroup:
 
         for i in range(self.num_actors):
             if self._reordered_gpu_ids is not None:
-                base_gpu_id = int(self._reordered_gpu_ids[i * num_gpu_per_engine])
+                base_gpu_id = normalize_gpu_id_for_visible_devices(self._reordered_gpu_ids[i * num_gpu_per_engine])
             else:
                 base_gpu_id = (i * num_gpu_per_engine) % self.num_gpus_per_node
 
