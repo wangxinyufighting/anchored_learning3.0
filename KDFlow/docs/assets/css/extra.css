@@ -1,0 +1,56 @@
+/* ----------------------------------------------------------------------------
+ * Tidy up the sidebar's bottom `.rst-versions` block.
+ *
+ * Layout:
+ *   ┌──────────────────────────────┐
+ *   │ ⑂ songmzhang/KDFlow          │   ← repo link, own row
+ *   │ « Previous          Next »   │   ← prev + next share a row
+ *   └──────────────────────────────┘
+ *
+ * The mkdocs readthedocs theme renders this block inline by default, which
+ * causes the three items to wrap and overlap inside the narrow sidebar. We
+ * use flex-wrap and force the repo link to take 100 % of the width so that
+ * the prev/next links are pushed to the next line.
+ * ------------------------------------------------------------------------- */
+.rst-versions .rst-current-version {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+/* Repo link → full-width first row. */
+.rst-versions .rst-current-version > a {
+  flex: 0 0 100%;
+  margin: 0 !important;
+}
+
+/* Prev / Next wrappers share the next row. */
+.rst-versions .rst-current-version > span {
+  margin: 0 !important;
+  float: none !important;
+}
+
+/* Push the last item (Next) to the right edge. */
+.rst-versions .rst-current-version > span:last-child {
+  margin-left: auto !important;
+}
+
+/* Keep the link colour readable on the dark sidebar background. */
+.rst-versions .rst-current-version > span > a {
+  color: #fcfcfc;
+}
+
+/* ----------------------------------------------------------------------------
+ * Make the main content area fill the available viewport width.
+ * The readthedocs theme caps `.wy-nav-content` at 800px by default, which
+ * leaves a lot of empty space on wide monitors and crams long code blocks /
+ * tables into the centre.
+ * ------------------------------------------------------------------------- */
+.wy-nav-content {
+  max-width: none !important;
+}
+

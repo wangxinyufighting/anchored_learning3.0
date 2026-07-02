@@ -1,0 +1,79 @@
+site_name: KDFlow
+site_description: A user-friendly and efficient framework for LLM knowledge distillation.
+site_url: https://kdflow.readthedocs.io/
+repo_url: https://github.com/songmzhang/KDFlow
+repo_name: songmzhang/KDFlow
+edit_uri: edit/main/docs/
+
+theme:
+  name: readthedocs
+  highlightjs: true
+  hljs_languages:
+    - bash
+    - python
+    - yaml
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_div_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+plugins:
+  - search
+
+extra_css:
+  - assets/css/extra.css
+
+extra_javascript:
+  - assets/js/mathjax-config.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+  - https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js
+  - assets/js/mermaid-init.js
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting_started/installation.md
+      - Quickstart: getting_started/quickstart.md
+  - User Guide:
+      - Off-Policy KD: user_guide/off_policy_kd.md
+      - On-Policy KD: user_guide/on_policy_kd.md
+      - Multi-Teacher KD: user_guide/multi_teacher_kd.md
+      - Cross-Tokenizer KD: user_guide/cross_tokenizer_kd.md
+      - Supervised Fine-Tuning: user_guide/sft.md
+      - Multimodal (VLM) Distillation: user_guide/multimodal.md
+  - Concepts:
+      - Architecture: concepts/architecture.md
+      - KD Algorithms: concepts/algorithms.md
+      - KD Loss Functions: concepts/losses.md
+  - Reference:
+      - CLI Entry Points: reference/cli.md
+      - Arguments: reference/arguments.md
+      - Extending KDFlow: reference/extending.md
+  - About:
+      - Changelog: about/changelog.md
+      - Citation: about/citation.md
+      - License: about/license.md
