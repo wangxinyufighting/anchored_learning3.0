@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+import inspect
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import torch
@@ -268,30 +269,53 @@ def apply_patch():
     if _PATCH_APPLIED:
         return True
     
+    patch_targets = []
+
     try:
         from sglang.srt.managers.scheduler_output_processor_mixin import (
             SchedulerOutputProcessorMixin,
         )
-        
-        # Check if already patched (by another mechanism like sitecustomize)
-        current_method = getattr(SchedulerOutputProcessorMixin, 'process_batch_result_prefill', None)
-        if current_method is not None and getattr(current_method, '_kdflow_patched', False):
+        patch_targets.append(SchedulerOutputProcessorMixin)
+    except ImportError as e:
+        print(f"[monkey_patch] Cannot import legacy SchedulerOutputProcessorMixin: {e}", flush=True)
+
+    try:
+        import sglang.srt.managers.scheduler as scheduler_module
+        for _, obj in inspect.getmembers(scheduler_module, inspect.isclass):
+            if hasattr(obj, "process_batch_result_prefill"):
+                patch_targets.append(obj)
+    except ImportError as e:
+        print(f"[monkey_patch] Cannot import scheduler module: {e}", flush=True)
+
+    if not patch_targets:
+        return False
+
+    try:
+        for target_cls in patch_targets:
+            current_method = getattr(target_cls, "process_batch_result_prefill", None)
+            if current_method is None:
+                continue
+
+            if getattr(current_method, "_kdflow_patched", False):
+                _PATCH_APPLIED = True
+                print(
+                    f"[monkey_patch] Patch already applied on {target_cls.__name__}, PID={os.getpid()}",
+                    flush=True,
+                )
+                return True
+
+            process_batch_result_prefill_patched._kdflow_patched = True
+            target_cls.process_batch_result_prefill = process_batch_result_prefill_patched
+
             _PATCH_APPLIED = True
-            print(f"[monkey_patch] Patch already applied, PID={os.getpid()}", flush=True)
+            print(
+                f"[monkey_patch] SUCCESS: process_batch_result_prefill patched on "
+                f"{target_cls.__module__}.{target_cls.__name__}! PID={os.getpid()}",
+                flush=True,
+            )
             return True
         
-        # Mark the patched function
-        process_batch_result_prefill_patched._kdflow_patched = True
-        
-        # Apply patch
-        SchedulerOutputProcessorMixin.process_batch_result_prefill = process_batch_result_prefill_patched
-        
-        _PATCH_APPLIED = True
-        print(f"[monkey_patch] SUCCESS: process_batch_result_prefill patched! PID={os.getpid()}", flush=True)
-        return True
-        
-    except ImportError as e:
-        print(f"[monkey_patch] Cannot import SGLang module: {e}", flush=True)
+        print("[monkey_patch] No patchable process_batch_result_prefill method found.", flush=True)
         return False
     except Exception as e:
         print(f"[monkey_patch] Error applying patch: {e}", flush=True)

@@ -157,7 +157,17 @@ def _handle_generate(engine, request, hidden_queue, response_queue):
 
     for idx, (output, mask) in enumerate(zip(outputs, kwargs["loss_masks"])):
         try:
-            hs_np = output["meta_info"]["hidden_states"][0]
+            meta_info = output.get("meta_info", {})
+            hidden_states = meta_info.get("hidden_states")
+            if not hidden_states:
+                raise RuntimeError(
+                    "SGLang returned empty hidden_states. This usually means the "
+                    "KDFlow SGLang monkey patch did not apply to the installed "
+                    "SGLang version, or return_hidden_states is unsupported by "
+                    f"this engine output. meta_info keys={list(meta_info.keys())}, "
+                    f"output keys={list(output.keys())}."
+                )
+            hs_np = hidden_states[0]
 
             # hs_np and mask may differ due to tokenization differences
             hs_len = hs_np.shape[0]
