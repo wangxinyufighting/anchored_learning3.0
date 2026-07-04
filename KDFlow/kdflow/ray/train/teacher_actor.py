@@ -107,12 +107,14 @@ class TeacherRayActor:
         batches = [global_batch[i] for i in batch_indices]
         
         # Collect prompts and loss masks across all micro-batches
-        prompts = sum((micro_batch["tea_full_texts"] for micro_batch in batches), [])
+        # Use list comprehension instead of sum() for O(n) instead of O(n²) complexity
+        prompts = [text for micro_batch in batches for text in micro_batch["tea_full_texts"]]
         unpadded_loss_masks = []
         for micro_batch in batches:
             attn_mask, loss_mask = micro_batch["tea_attn_mask"], micro_batch["tea_loss_mask"]
             unpadded_loss_masks.extend(remove_pad_token(loss_mask, attn_mask, return_tensors=True))
-        unpadded_loss_masks = [m.numpy().astype(bool) for m in unpadded_loss_masks]
+        # Avoid astype(bool) conversion - numpy() already returns correct dtype
+        unpadded_loss_masks = [m.numpy() for m in unpadded_loss_masks]
         token_counts = [int(micro_batch["tea_attn_mask"].sum().item()) for micro_batch in batches]
         max_seq_len = max((int(micro_batch["tea_attn_mask"].shape[-1]) for micro_batch in batches), default=0)
         logger.info(
@@ -127,7 +129,8 @@ class TeacherRayActor:
         # Collect image data if present
         image_data = None
         if batches[0].get("images") is not None:
-            image_data = sum((micro_batch["images"] for micro_batch in batches), [])
+            # Use list comprehension for O(n) complexity
+            image_data = [img for micro_batch in batches for img in micro_batch["images"]]
         
         hidden_states_list = self.engine_service.generate(
             prompt=prompts,
@@ -150,7 +153,9 @@ class TeacherRayActor:
             mbsz = batches[mb_idx]["tea_input_ids"].shape[0]
             mb_hidden_np = hidden_states_list[sample_idx: sample_idx + mbsz]
             mb_hidden_np = np.concatenate(mb_hidden_np, axis=0)
-            batches[mb_idx]["teacher_hiddens"] = ray.put(mb_hidden_np)
+            # Store as torch tensor to avoid numpy->torch conversion in student actor
+            mb_hidden_tensor = torch.from_numpy(mb_hidden_np)
+            batches[mb_idx]["teacher_hiddens"] = ray.put(mb_hidden_tensor)
             results_with_indices.append((original_batch_idx, batches[mb_idx]))
             sample_idx += mbsz
         

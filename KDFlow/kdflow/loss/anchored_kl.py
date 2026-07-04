@@ -30,13 +30,14 @@ def compute_anchored_kl_div(
 
     if anchor_interpolation == "logit":
         anchor_logits = (1.0 - anchor_alpha) * current_logits + anchor_alpha * reference_logits
-        anchor_log_probs = torch.log_softmax(anchor_logits, dim=-1, dtype=torch.float32)
-        anchor_probs = anchor_log_probs.exp()
+        # Optimized: compute softmax directly instead of log_softmax().exp()
+        anchor_probs = torch.softmax(anchor_logits, dim=-1, dtype=torch.float32)
+        anchor_log_probs = torch.log(anchor_probs.clamp_min(1e-20))
     elif anchor_interpolation in ("prob", "probability"):
         current_probs = torch.softmax(current_logits, dim=-1, dtype=torch.float32)
         reference_probs = torch.softmax(reference_logits, dim=-1, dtype=torch.float32)
         anchor_probs = (1.0 - anchor_alpha) * current_probs + anchor_alpha * reference_probs
-        anchor_log_probs = torch.log(anchor_probs.clamp_min(torch.finfo(anchor_probs.dtype).tiny))
+        anchor_log_probs = torch.log(anchor_probs.clamp_min(1e-20))
     else:
         raise ValueError(
             "anchor_interpolation must be one of {'logit', 'prob', 'probability'}, "

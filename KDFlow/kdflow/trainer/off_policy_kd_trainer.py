@@ -181,21 +181,29 @@ class OffPolicyKDTrainer:
                 # ===== Student Phase (train N steps) =====
                 if self.args.train.enable_sleep:
                     self.student.wakeup()
+
+                # Launch all student training tasks asynchronously for better GPU utilization
+                student_futures = []
+                student_start_times = []
                 for global_batch in all_global_batches:
-                    student_start = time.time()
+                    student_start_times.append(time.time())
+                    student_futures.append(self.student.async_run_distill.remote(global_batch))
+
+                # Process results as they complete
+                for i, future in enumerate(student_futures):
                     self.global_step += 1
-                    status_list = ray.get(self.student.async_run_distill(global_batch))
+                    status_list = ray.get(future)
                     for k in status_list[0].keys():
                         self.log_state[k].append(sum(s[k] for s in status_list) / len(status_list))
                     self.log_state["teacher_step_fwd_time"].append(teacher_step_fwd_time)
-                    self.log_state["student_step_train_time"].append((time.time() - student_start))
+                    self.log_state["student_step_train_time"].append((time.time() - student_start_times[i]))
                     self.logging()
-                    
+
                     if self.global_step % self.args.train.save_steps == 0:
                         self.strategy.log(f"Saving model at global step {self.global_step}")
                         save_path = os.path.join(self.args.train.save_path, f"epoch_{epoch + 1}_global_step_{self.global_step}")
                         ray.get(self.student.async_save_model(save_path))
-                
+
                 if self.args.train.enable_sleep:
                     self.student.sleep()
                 

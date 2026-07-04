@@ -284,10 +284,11 @@ class StudentRayActor:
             self.strategy.step = 0
 
         for batch in train_data:
+            # Optimized: teacher_hiddens is now stored as torch.Tensor in Ray object store
+            # This eliminates the numpy->torch conversion overhead
             micro_batch = {
-                k: torch.from_numpy(ray.get(v) if isinstance(v, ray.ObjectRef) else v).to(device, non_blocking=True)
-                    if isinstance(v, (np.ndarray, ray.ObjectRef))
-                else v.to(device) if isinstance(v, torch.Tensor)
+                k: (ray.get(v) if isinstance(v, ray.ObjectRef) else v).to(device, non_blocking=True)
+                    if isinstance(v, (torch.Tensor, ray.ObjectRef))
                 else v
                 for k, v in batch.items()
             }
