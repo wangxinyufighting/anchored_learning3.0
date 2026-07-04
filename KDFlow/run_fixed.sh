@@ -18,7 +18,10 @@ echo "=== Step 3: Verify Ray status ==="
 ray status
 
 echo "=== Step 4: Run training (without KDFLOW_RAY_ADDRESS=local) ==="
-# Key fix: Remove KDFLOW_RAY_ADDRESS=local to use the manual Ray cluster
+# Key fixes:
+# 1. Remove KDFLOW_RAY_ADDRESS=local to use manual Ray cluster
+# 2. CRITICAL: Reduce TEACHER_FORWARD_N_BATCHES to avoid overwhelming teacher
+# 3. Use TEACHER_TP_SIZE=1 for simplicity on 2 GPUs
 CUDA_LIB_PATH=/czsun/zhi/envs/kdflow/lib/python3.10/site-packages/nvidia/cu13/lib \
 CUDA_VISIBLE_DEVICES=6,7 \
 RUN_REFERENCE_SFT=false \
@@ -26,9 +29,9 @@ SFT_REFERENCE_MODEL=/czsun/zhi/xywang/anchored_learning/LlamaFactory/saves/Qwen3
 DATA_JSON=/czsun/zhi/xywang/anchored_learning/LlamaFactory/data/medcalc_train.json \
 BASE_MODEL=/czsun/models/Qwen3-4B \
 NUM_GPUS_PER_NODE=2 \
-TEACHER_TP_SIZE=2 \
-TEACHER_DP_SIZE=1 \
-TEACHER_MEM_FRACTION_STATIC=0.4 \
+TEACHER_TP_SIZE=1 \
+TEACHER_MEM_FRACTION_STATIC=0.5 \
+TEACHER_FORWARD_N_BATCHES=5 \
 TRAIN_BATCH_SIZE=16 \
 MICRO_TRAIN_BATCH_SIZE=1 \
 ATTN_IMPLEMENTATION=sdpa \
