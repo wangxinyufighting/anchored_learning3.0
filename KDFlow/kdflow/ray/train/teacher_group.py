@@ -230,6 +230,14 @@ class TeacherActorGroup:
             min_actor = min(range(self.dp_size), key=lambda x: actor_tokens[x])
             actor_assignments[min_actor].append(batch_idx)
             actor_tokens[min_actor] += token_count
+        logger.info(
+            "[TeacherActorGroup.forward] dispatch: total_batches=%d, total_tokens=%d, "
+            "actor_tokens=%s, actor_assignments=%s",
+            len(global_batch),
+            sum(batch_token_counts),
+            actor_tokens,
+            actor_assignments,
+        )
         
         futures = []
         for i, actor in enumerate(self.teacher_engines):

@@ -1,4 +1,5 @@
 import os
+import time
 
 import ray
 import torch
@@ -102,6 +103,7 @@ class TeacherRayActor:
         Returns:
             List of (batch_idx, micro-batch with teacher_hiddens) tuples and return timestamp
         """
+        start_time = time.time()
         batches = [global_batch[i] for i in batch_indices]
         
         # Collect prompts and loss masks across all micro-batches
@@ -111,6 +113,16 @@ class TeacherRayActor:
             attn_mask, loss_mask = micro_batch["tea_attn_mask"], micro_batch["tea_loss_mask"]
             unpadded_loss_masks.extend(remove_pad_token(loss_mask, attn_mask, return_tensors=True))
         unpadded_loss_masks = [m.numpy().astype(bool) for m in unpadded_loss_masks]
+        token_counts = [int(micro_batch["tea_attn_mask"].sum().item()) for micro_batch in batches]
+        max_seq_len = max((int(micro_batch["tea_attn_mask"].shape[-1]) for micro_batch in batches), default=0)
+        logger.info(
+            "[TeacherRayActor.forward] start: batches=%s, prompts=%d, tokens=%d, "
+            "max_seq_len=%d",
+            batch_indices,
+            len(prompts),
+            sum(token_counts),
+            max_seq_len,
+        )
         
         # Collect image data if present
         image_data = None
@@ -124,6 +136,12 @@ class TeacherRayActor:
             return_hidden_states=True,
             image_data=image_data,
         )
+        logger.info(
+            "[TeacherRayActor.forward] generate done: batches=%s, prompts=%d, elapsed=%.1fs",
+            batch_indices,
+            len(prompts),
+            time.time() - start_time,
+        )
         
         # Process in micro-batch groups with vectorized operations
         sample_idx = 0
@@ -136,6 +154,11 @@ class TeacherRayActor:
             results_with_indices.append((original_batch_idx, batches[mb_idx]))
             sample_idx += mbsz
         
+        logger.info(
+            "[TeacherRayActor.forward] finish: batches=%s, elapsed=%.1fs",
+            batch_indices,
+            time.time() - start_time,
+        )
         return results_with_indices
     
     def sleep(self, tags=None):
