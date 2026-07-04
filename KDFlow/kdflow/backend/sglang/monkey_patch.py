@@ -30,16 +30,106 @@ _PATCH_APPLIED = False
 
 
 def _get_req_is_chunked(req) -> int:
-    return getattr(req, "is_chunked", 0)
+    if hasattr(req, "is_chunked"):
+        return getattr(req, "is_chunked", 0)
+    return getattr(req, "inflight_middle_chunks", 0)
 
 
 def _decrement_req_is_chunked(req) -> None:
     if hasattr(req, "is_chunked"):
         req.is_chunked -= 1
+    elif hasattr(req, "inflight_middle_chunks"):
+        req.inflight_middle_chunks -= 1
 
 
 def _safe_getattr(obj, name, default=None):
     return getattr(obj, name, default)
+
+
+def _call_first_available(obj, names, *args, **kwargs):
+    for name in names:
+        fn = getattr(obj, name, None)
+        if fn is not None:
+            return fn(*args, **kwargs)
+    return None
+
+
+def _update_req_finish_state(req) -> None:
+    if hasattr(req, "check_finished"):
+        req.check_finished()
+        return
+    if hasattr(req, "update_finish_state"):
+        req.update_finish_state()
+
+
+def _maybe_set_prefill_finished_time(req) -> None:
+    time_stats = getattr(req, "time_stats", None)
+    if time_stats is None:
+        return
+
+    if hasattr(time_stats, "prefill_finished_ts"):
+        if time_stats.prefill_finished_ts == 0.0:
+            time_stats.prefill_finished_ts = time.time()
+    elif hasattr(time_stats, "set_prefill_finished_time"):
+        time_stats.set_prefill_finished_time()
+
+
+def _maybe_set_completion_time(req) -> None:
+    time_stats = getattr(req, "time_stats", None)
+    if time_stats is not None and hasattr(time_stats, "completion_time"):
+        time_stats.completion_time = time.perf_counter()
+
+
+def _maybe_cache_unfinished_req(processor, batch, req) -> None:
+    decoding_reqs = _safe_getattr(batch, "decoding_reqs", None)
+    if decoding_reqs and req in decoding_reqs:
+        return
+
+    tree_cache = getattr(processor, "tree_cache", None)
+    if tree_cache is not None and hasattr(tree_cache, "cache_unfinished_req"):
+        tree_cache.cache_unfinished_req(req)
+
+
+def _maybe_collect_routed_experts(processor, req) -> None:
+    _call_first_available(
+        processor,
+        ("maybe_collect_routed_experts", "_maybe_collect_routed_experts"),
+        req,
+    )
+
+
+def _maybe_collect_customized_info(processor, i, req, logits_output) -> None:
+    _call_first_available(
+        processor,
+        ("maybe_collect_customized_info", "_maybe_collect_customized_info"),
+        i,
+        req,
+        logits_output,
+    )
+
+
+def _stream_output(processor, batch, skip_stream_req) -> None:
+    _call_first_available(
+        processor,
+        ("stream_output", "_stream_output"),
+        batch.reqs,
+        batch.return_logprob,
+        skip_stream_req,
+    )
+
+
+def _maybe_log_prefill_stats(processor, batch, result) -> None:
+    if not getattr(processor, "current_scheduler_metrics_enabled", False):
+        return
+    log_prefill_stats = getattr(processor, "log_prefill_stats", None)
+    if log_prefill_stats is None:
+        return
+    can_run_cuda_graph = getattr(result, "can_run_cuda_graph", False)
+    log_prefill_stats(
+        prefill_stats=batch.prefill_stats,
+        can_run_cuda_graph=can_run_cuda_graph,
+        dp_cooperation_info=batch.dp_cooperation_info,
+    )
 
 
 def process_batch_result_prefill_patched(
@@ -98,25 +188,21 @@ def process_batch_result_prefill_patched(
                 continue
 
             if _get_req_is_chunked(req) <= 0:
-                if hasattr(req.time_stats, "prefill_finished_ts"):
-                    if req.time_stats.prefill_finished_ts == 0.0:
-                        req.time_stats.prefill_finished_ts = time.time()
-                else:
-                    req.time_stats.set_prefill_finished_time()
+                _maybe_set_prefill_finished_time(req)
 
                 # req output_ids are set here
                 req.output_ids.append(next_token_id)
-                req.check_finished()
+                _update_req_finish_state(req)
 
                 if req.finished():
-                    self.maybe_collect_routed_experts(req)
+                    _maybe_collect_routed_experts(self, req)
                     release_kv_cache(req, self.tree_cache)
-                    req.time_stats.completion_time = time.perf_counter()
-                elif not _safe_getattr(batch, "decoding_reqs", None) or req not in batch.decoding_reqs:
+                    _maybe_set_completion_time(req)
+                else:
                     # This updates radix so others can match
-                    self.tree_cache.cache_unfinished_req(req)
+                    _maybe_cache_unfinished_req(self, batch, req)
 
-                self.maybe_collect_customized_info(i, req, logits_output)
+                _maybe_collect_customized_info(self, i, req, logits_output)
 
                 if batch.return_logprob:
                     assert extend_logprob_start_len_per_req is not None
@@ -242,12 +328,12 @@ def process_batch_result_prefill_patched(
             if _get_req_is_chunked(req) <= 0:
                 # Dummy output token for embedding models
                 req.output_ids.append(0)
-                req.check_finished()
+                _update_req_finish_state(req)
 
                 if req.finished():
                     release_kv_cache(req, self.tree_cache)
                 else:
-                    self.tree_cache.cache_unfinished_req(req)
+                    _maybe_cache_unfinished_req(self, batch, req)
             else:
                 # being chunked reqs' prefill is not finished
                 _decrement_req_is_chunked(req)
@@ -259,15 +345,8 @@ def process_batch_result_prefill_patched(
             #     thread_finish_flag=req.finished(),
             # )
 
-    self.stream_output(batch.reqs, batch.return_logprob, skip_stream_req)
-
-    if self.current_scheduler_metrics_enabled:
-        can_run_cuda_graph = getattr(result, "can_run_cuda_graph", False)
-        self.log_prefill_stats(
-            prefill_stats=batch.prefill_stats,
-            can_run_cuda_graph=can_run_cuda_graph,
-            dp_cooperation_info=batch.dp_cooperation_info,
-        )
+    _stream_output(self, batch, skip_stream_req)
+    _maybe_log_prefill_stats(self, batch, result)
 
 
 def apply_patch():
@@ -326,6 +405,8 @@ def apply_patch():
                 f"{target_cls.__module__}.{target_cls.__name__}! PID={os.getpid()}",
                 flush=True,
             )
+
+        if _PATCH_APPLIED:
             return True
         
         print("[monkey_patch] No patchable process_batch_result_prefill method found.", flush=True)
